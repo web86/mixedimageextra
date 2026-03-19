@@ -1,8 +1,10 @@
 Ext.onReady(function () {
-
-    //console.log("MYIMAGE AJAX HOOK INIT");
-
+    
     var origRequest = Ext.Ajax.request;
+    
+    // ================================
+    // ПЕРЕХВАТЫВАЕМ UPLOAD (не migx)
+    // ================================
 
     Ext.Ajax.request = function(options) {
 
@@ -10,9 +12,7 @@ Ext.onReady(function () {
 
             if (options && options.url && options.url.indexOf("mixedimage/connector.php") !== -1) {
 
-                //console.log("INTERCEPT MIXEDIMAGE REQUEST");
-
-                // безопасно пропускаем remove
+                 // безопасно пропускаем remove
                 var isRemove = false;
 
                 if (options.params && options.params.action === "file/remove") {
@@ -57,7 +57,7 @@ Ext.onReady(function () {
                     // ================================
                     // 🔁 ПОДМЕНА CONNECTOR
                     // ================================
-                    console.log("REWRITING CONNECTOR URL");
+                    //console.log("REWRITING CONNECTOR URL");
                     options.url = MODx.config.assets_url + "components/mixedimageextra/connector.php";
                 }
             }
@@ -68,5 +68,180 @@ Ext.onReady(function () {
 
         return origRequest.call(this, options);
     };
+    
+    // ================================
+    // ПЕРЕХВАТЫВАЕМ UPLOAD в MIGX
+    // ================================
+    /**
+     * Получить MIGX_id из открытого окна редактирования строки MIGX.
+     * Берём только видимое окно с полем .tvmigxid
+     */
+    function getCurrentMigxId() {
+        try {
+            var inputs = document.querySelectorAll('.x-window input.tvmigxid');
+
+            if (!inputs || !inputs.length) {
+                console.log('MIGX_ID: no .tvmigxid found');
+                return 0;
+            }
+
+            // Берём последнее видимое поле — обычно это текущее открытое окно
+            for (var i = inputs.length - 1; i >= 0; i--) {
+                var input = inputs[i];
+
+                if (!input) continue;
+
+                var win = input.closest('.x-window');
+                if (!win) continue;
+
+                var style = window.getComputedStyle(win);
+                var visible = style.display !== 'none' && style.visibility !== 'hidden';
+
+                if (visible && input.value) {
+                    var migxId = parseInt(input.value, 10) || 0;
+                    //console.log('MIGX_ID FROM WINDOW:', migxId, input);
+                    return migxId;
+                }
+            }
+        } catch (e) {
+            console.warn('getCurrentMigxId error', e);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Проверка: ресурс уже сохранён?
+     */
+    function getResourceId(formdataJson) {
+        var resourceId = 0;
+
+        // 1. пробуем из formdata
+        if (formdataJson) {
+            try {
+                var formdata = Ext.decode(formdataJson);
+                resourceId = parseInt(formdata.id || 0, 10);
+            } catch (e) {}
+        }
+
+        // 2. fallback из формы ресурса
+        if (!resourceId) {
+            try {
+                var panel = Ext.getCmp('modx-panel-resource');
+                if (panel && panel.getForm) {
+                    var values = panel.getForm().getValues();
+                    resourceId = parseInt(values.id || 0, 10);
+                }
+            } catch (e) {}
+        }
+
+        return resourceId;
+    }
+    
+    
+
+    /**
+     * Ждём, пока mixedimage загрузится
+     */
+    var tries = 0;
+    var timer = setInterval(function () {
+
+        if (!window.mixedimage || !mixedimage.fileform || !mixedimage.fileform.prototype) {
+            tries++;
+            if (tries > 50) {
+                clearInterval(timer);
+                console.warn('mixedimage.fileform not found');
+            }
+            return;
+        }
+
+        clearInterval(timer);
+        //console.log('PATCHING mixedimage.fileform');
+
+        /**
+         * Патчим upload с кнопки "С вашего компьютера"
+         */
+        mixedimage.fileform.prototype.onFileSelected = function(field, value) {
+            this.form.baseParams.file = field.getValue();
+
+            var params = {};
+            params.custompath = this.TV.getCustomPath() || '';
+            params.formdata = Ext.util.JSON.encode(
+                Ext.getCmp('modx-panel-resource').getForm().getValues() || {}
+            );
+
+            // Ресурс должен быть сохранён
+            var resourceId = getResourceId(params.formdata);
+            if (!resourceId) {
+                Ext.Msg.alert(
+                    'Внимание',
+                    'Сначала сохраните ресурс, затем загружайте изображения.'
+                );
+                return false;
+            }
+
+            
+            var isMigx = String(this.TV.tvId) !== String(this.TV.tv_id);
+            
+            if (isMigx) {
+            
+                var migxId = getCurrentMigxId();
+            
+                if (migxId) {
+                    params.migx_id = migxId;
+                    //console.log('ATTACH MIGX_ID:', migxId);
+                } else {
+                    console.log('MIGX but no ID found');
+                }
+            
+            } else {
+                //console.log('REGULAR TV upload');
+            }
+
+            this.form.submit({
+                url: MODx.config.assets_url + 'components/mixedimageextra/connector.php',
+                waitMsg: 'Uploading...',
+                params: params,
+                success: function(fp, o) {
+                    var value = o.result.message;
+                    this.TV.setValue(value);
+                    this.fireEvent('onFileUploadSuccess', o.result);
+                },
+                failure: function(fp, o) {
+                    MODx.msg.alert('Error', o.result.message);
+                },
+                scope: this
+            });
+        };
+
+        
+        /**
+         * Патчим удаление, чтобы тоже шло через наш connector
+         */
+        // mixedimage.trigger.prototype.clearField = function() {
+        //     if (this.removeFile) {
+        //         Ext.Ajax.request({
+        //             url: MODx.config.assets_url + 'components/mixedimageextra/connector.php',
+        //             params: {
+        //                 file: this.value,
+        //                 action: 'file/remove',
+        //                 source: this.source
+        //             },
+        //             success: function() {
+        //                 MODx.msg.alert('Remove', _('mixedimage.success_removed'));
+        //             },
+        //             failure: function() {
+        //                 MODx.msg.alert('Error', _('mixedimage.error_remove'));
+        //             }
+        //         });
+        //     }
+
+        //     this.setValue('');
+        //     this.fireEvent('change', this);
+        // };
+
+        //console.log('mixedimage.fileform patched successfully');
+
+    }, 200);
 
 });
