@@ -115,8 +115,7 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
 
             // формируем полный путь
             $basePath = MODX_BASE_PATH;
-            // $fullPath = rtrim($basePath, '/') . '/' . ltrim($url, '/');
-            // $fullPath = preg_replace('#/+#','/',$fullPath);
+            
             $fullPath = MODX_BASE_PATH . ltrim($url, '/');
             
             if (!file_exists($fullPath)) {
@@ -240,57 +239,32 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
             // 🚀 Обработка изображения
             // ================================
             $processor = new ImageProcessor($this->modx);
+            
+            $result = $processor->process($fullPath, $config, $migxIndex, $this->getProperty('res_alias'));
+            
+            $this->log('$result', print_r($result,1));
+
+            if (!$result || empty($result['baseName'])) {
+                $this->logError('ImageProcessor failed');
+                return $response;
+            }
+            
+            $urlInfo = pathinfo($url);
+            $newUrl = $urlInfo['dirname'] . '/' . $result['baseName'] . '.jpg';
+            
+            
+            $this->log('FINAL URL', $newUrl);
+            
+            $data['message'] = $newUrl;
+            $data['success'] = true;
+            
+            
            
-           if ($isMigx) {
-                $processor->process($fullPath, $config, $migxIndex);
-            } else {
-                $processor->process($fullPath, $config, 0);
-            }
-
-            // ================================
-            // 🔁 Замена URL (если был не jpg)
-            // ================================
-            
-            $ext = strtolower(pathinfo($url, PATHINFO_EXTENSION));
-
-            if (!in_array($ext, ['jpg','jpeg'])) {
-            
-                $urlInfo = pathinfo($url);
-                $baseName = $urlInfo['filename'];
-            
-                // убираем старый индекс в конце, если он уже был
-                // ВАЖНО: НЕ удаляем индекс при редактировании
-               if ($isMigx && $migxIndex > 0) {
-
-                    if (!preg_match('/-\d+$/', $baseName)) {
-                        $baseName .= '-' . $migxIndex;
-                    }
-                
-                } else {
-                    $baseName = preg_replace('/-\d+$/', '', $baseName);
-                }
-            
-            
-                $newUrl = $urlInfo['dirname'] . '/' . $baseName . '.jpg';
-                //$newUrl = preg_replace('#/+#', '/', $newUrl);
-            
-                $this->log('NEW URL', $newUrl);
-            
-                $data['message'] = $newUrl;
-            
-                if (is_object($response) && method_exists($response, 'setResponse')) {
-                    $response->setResponse($data);
-                    return $response;
-                }
-            
-                return $data;
-            }
-
         } catch (Exception $e) {
             $this->logError($e->getMessage());
         }
 
-        return $response;
+        return $this->modx->toJSON($data);
     }
 }
 
