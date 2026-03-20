@@ -65,7 +65,7 @@ Ext.onReady(function () {
         } catch (e) {
             console.warn("AJAX PATCH ERROR", e);
         }
-
+        //console.log(options);
         return origRequest.call(this, options);
     };
     
@@ -189,13 +189,13 @@ Ext.onReady(function () {
             
                 if (migxId) {
                     params.migx_id = migxId;
-                    //console.log('ATTACH MIGX_ID:', migxId);
+                    console.log('ATTACH MIGX_ID:', migxId);
                 } else {
                     console.log('MIGX but no ID found');
                 }
             
             } else {
-                //console.log('REGULAR TV upload');
+                console.log('REGULAR TV upload');
             }
 
             this.form.submit({
@@ -203,8 +203,11 @@ Ext.onReady(function () {
                 waitMsg: 'Uploading...',
                 params: params,
                 success: function(fp, o) {
+                    //console.log('UPLOAD RESPONSE:', o.result);
                     var value = o.result.message;
+                    //console.log('UPLOAD MESSAGE:', value);
                     this.TV.setValue(value);
+                    
                     this.fireEvent('onFileUploadSuccess', o.result);
                 },
                 failure: function(fp, o) {
