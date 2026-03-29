@@ -20,7 +20,7 @@ Ext.onReady(function () {
                 }
 
                 // ================================
-                // 🚫 БЛОКИРУЕМ UPLOAD ДЛЯ НОВОГО РЕСУРСА
+                // БЛОКИРУЕМ UPLOAD ДЛЯ НОВОГО РЕСУРСА
                 // ================================
                 if (!isRemove) {
 
@@ -54,18 +54,27 @@ Ext.onReady(function () {
                         return false;
                     }
 
-                    // ================================
-                    // 🔁 ПОДМЕНА CONNECTOR
-                    // ================================
-                    //console.log("REWRITING CONNECTOR URL");
-                    options.url = MODx.config.assets_url + "components/mixedimageextra/connector.php";
+                    
                 }
+                
+                // ================================
+                // 🔁 ПОДМЕНА CONNECTOR
+                // ================================
+                //console.log("REWRITING CONNECTOR URL");
+                options.url = MODx.config.assets_url + "components/mixedimageextra/connector.php";
             }
 
         } catch (e) {
             console.warn("AJAX PATCH ERROR", e);
         }
-        //console.log(options);
+        
+        if (options && options.params && options.params.action === 'file/remove') {
+            // console.group('GLOBAL REMOVE REQUEST');
+            // console.log('URL =', options.url);
+            // console.log('PARAMS =', options.params);
+            // console.log('OPTIONS =', options);
+            // console.groupEnd();
+        }
         return origRequest.call(this, options);
     };
     
@@ -221,30 +230,65 @@ Ext.onReady(function () {
         /**
          * Патчим удаление, чтобы тоже шло через наш connector
          */
-        // mixedimage.trigger.prototype.clearField = function() {
-        //     if (this.removeFile) {
-        //         Ext.Ajax.request({
-        //             url: MODx.config.assets_url + 'components/mixedimageextra/connector.php',
-        //             params: {
-        //                 file: this.value,
-        //                 action: 'file/remove',
-        //                 source: this.source
-        //             },
-        //             success: function() {
-        //                 MODx.msg.alert('Remove', _('mixedimage.success_removed'));
-        //             },
-        //             failure: function() {
-        //                 MODx.msg.alert('Error', _('mixedimage.error_remove'));
-        //             }
-        //         });
-        //     }
+        // Переопределяем стандартный clearField() у mixedImage,
+        // чтобы при удалении файла запрос шёл не в родной connector mixedImage,
+        // а в наш кастомный mixedimageextra/connector.php.
+        // Это нужно для того, чтобы вместе с основным файлом удалялись
+        // и все его сгенерированные копии (-S, -M, -L и т.д.).
+        mixedimage.trigger.prototype.clearField = function() {
+            var tvIdRaw = '';
+            var fieldTvId = 0;
+        
+            try {
+                // У тебя по логам именно тут лежит строка вида:
+                // inp_628_138_1
+                tvIdRaw = this.tvId || '';
+        
+                // Достаём из строки второй числовой сегмент = реальный ID TV
+                // Формат: inp_<resourceId>_<tvId>_<index>
+                var match = String(tvIdRaw).match(/^inp_\d+_(\d+)_\d+$/);
+        
+                if (match && match[1]) {
+                    fieldTvId = parseInt(match[1], 10) || 0;
+                }
+            } catch (e) {
+                console.warn('mixedimage clearField parse error', e);
+            }
+        
+            // console.group('MIXEDIMAGE REMOVE DEBUG');
+            // console.log('this =', this);
+            // console.log('tvIdRaw =', tvIdRaw);
+            // console.log('fieldTvId =', fieldTvId);
+            // console.log('value =', this.value);
+            // console.groupEnd();
+        
+            if (this.removeFile && this.value) {
+                Ext.Ajax.request({
+                    url: MODx.config.assets_url + 'components/mixedimageextra/connector.php',
+                    params: {
+                        file: this.value,
+                        action: 'file/remove',
+                        source: this.source,
+                        tvId: tvIdRaw,
+                        tv_id: fieldTvId
+                    },
+                    success: function(response) {
+                        // console.log('REMOVE SUCCESS response =', response);
+                        MODx.msg.alert('Remove', _('mixedimage.success_removed'));
+                    },
+                    failure: function(response) {
+                        console.log('REMOVE FAILURE response =', response);
+                        MODx.msg.alert('Error', _('mixedimage.error_remove'));
+                    }
+                });
+            }
+        
+            this.setValue('');
+            this.fireEvent('change', this);
+        };
 
-        //     this.setValue('');
-        //     this.fireEvent('change', this);
-        // };
-
-        //console.log('mixedimage.fileform patched successfully');
+        console.log('mixedimage.fileform patched successfully');
 
     }, 200);
-
+    
 });
