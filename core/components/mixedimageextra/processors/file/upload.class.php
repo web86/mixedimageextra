@@ -43,7 +43,7 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
     {
         
         // ================================
-        // 🔧 DEBUG режим (системная настройка)
+        // DEBUG режим (системная настройка)
         // ================================
         $this->debug = (bool)$this->modx->getOption('mixedimageextra_debug', null, false);
         
@@ -51,12 +51,12 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
         $this->log('REQUEST: '.print_r($_REQUEST,1));
 
         // ================================
-        // 📥 Стандартная загрузка файла
+        // Стандартная загрузка файла
         // ================================
         $response = parent::process();
 
         // ================================
-        // 📦 Нормализация response
+        // Нормализация response
         // ================================
         if (is_object($response) && method_exists($response, 'getResponse')) {
             $data = $response->getResponse();
@@ -78,7 +78,7 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
         }
 
         // ================================
-        // ❗ Проверка успешной загрузки
+        // Проверка успешной загрузки
         // ================================
         if (empty($data['success'])) {
             $this->log('Upload failed');
@@ -86,7 +86,7 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
         }
 
         // ================================
-        // ❗ Проверка Imagick
+        // Проверка Imagick
         // ================================
         if (!class_exists('Imagick')) {
             $this->logError('Imagick not installed');
@@ -96,7 +96,7 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
         try {
 
             // ================================
-            // 📌 Получаем путь к файлу
+            // Получаем путь к файлу
             // ================================
             if (empty($data['message'])) {
                 $this->logError('Empty file URL');
@@ -179,10 +179,8 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
                 
             }
             
-            
-            
             // ================================
-            // 📌 Получаем конфиг из TV
+            // Получаем конфиг из TV
             // ================================
                     
             $TV = $this->modx->getObject('modTemplateVar', $fieldTvId);
@@ -252,14 +250,11 @@ class mixedimageextraFileUploadProcessor extends mixedimageBrowserFileUploadProc
             $urlInfo = pathinfo($url);
             $newUrl = $urlInfo['dirname'] . '/' . $result['baseName'] . '.jpg';
             
-            
             $this->log('FINAL URL', $newUrl);
             
             $data['message'] = $newUrl;
             $data['success'] = true;
             
-            
-           
         } catch (Exception $e) {
             $this->logError($e->getMessage());
         }
